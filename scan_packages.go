@@ -52,7 +52,8 @@ type pkg struct {
 	module   string // path to .iml file
 	srcDir   string // path to src/ or <sourceFolder .../> from .iml
 	pkgDir   string // path to package
-	pkgName  string // it's name, as in `import ...`
+	name     string // as in `import ...`
+	doc      string // existing documentation
 	files    []string
 	filesCnt map[string]int // number of .kt and .java files
 }
@@ -98,39 +99,24 @@ func main() {
 			}
 
 			pkgDir := filepath.Dir(path)
-			if _, ok := pkgs[pkgDir]; ok {
+			if existingPkg, ok := pkgs[pkgDir]; ok {
+				if strings.HasSuffix(path, "package-info.java") || strings.HasSuffix(path, "package.html") {
+					existingPkg.doc = path
+				}
 				return nil // skip the rest of the files for a known package
 			}
 
 			if strings.HasSuffix(path, ".java") || strings.HasSuffix(path, ".kt") {
-				// read pkgName from the first line
-				f, err := os.Open(path)
+				pkgName, err := readPkgNameFromFirstLines(path, 100)
 				if err != nil {
 					return err
 				}
-				defer f.Close()
 
-				n := 0
-				pkgName := ""
-				scanner := bufio.NewScanner(f)
-				for scanner.Scan() && n < 100 { // read first 100 lines
-					if strings.HasPrefix(scanner.Text(), "package ") {
-						ss := strings.Fields(scanner.Text())
-						if len(ss) != 2 {
-							fmt.Fprintf(os.Stderr, "fail to get package name for %q\n", path)
-						}
-						pkgName = strings.TrimRight(ss[1], ";")
-						break
-					}
-					n++
+				newPkg := &pkg{module: mod, srcDir: srcDir, pkgDir: pkgDir, name: pkgName}
+				if strings.HasSuffix(path, "package-info.java") || strings.HasSuffix(path, "package.html") {
+					newPkg.doc = path
 				}
-				// fmt.Printf("\t%-50s\t%s\n", pkgName, pkgDir)
-				if err := scanner.Err(); err != nil {
-					fmt.Fprintf(os.Stderr, "fail reading file %q :%v\n", path, err)
-					return err
-				}
-
-				pkgs[pkgDir] = &pkg{module: mod, srcDir: srcDir, pkgDir: pkgDir, pkgName: pkgName}
+				pkgs[pkgDir] = newPkg
 			}
 			return nil
 		})
@@ -140,8 +126,8 @@ func main() {
 	// collect the files
 	readPkgsDirToCollectFiles(pkgs)
 
-	// header
-	fields := []string{"files", ".java", ".kt", "module", "package"}
+	// print: header
+	fields := []string{"files", ".java", ".kt", "module", "package", "documentation"}
 	if *gsFlag {
 		fmt.Println(strings.Join(fields, "\t"))
 	}
@@ -154,17 +140,31 @@ func main() {
 		fmt.Println()
 	}
 
+	// print: body
 	for _, pkg := range pkgs {
 		pkgLink := spaceURL + pkg.pkgDir
 		fmtPkgLink := pkg.pkgDir
+
+		docSign := ""
+		if strings.HasSuffix(pkg.doc, ".html") {
+			docSign = "🚧"
+		} else if strings.HasSuffix(pkg.doc, ".java") {
+			docSign = "✅"
+		}
+
 		if *gsFlag {
-			fmtPkgLink = fmt.Sprintf(`=HYPERLINK("%s","%s")`, pkgLink, pkg.pkgName)
-			fmt.Printf("%d\t%d\t%d\t%s\t%s\n", len(pkg.files), pkg.filesCnt[".java"], pkg.filesCnt[".kt"], pkg.module, fmtPkgLink)
+			fmtPkgLink = fmt.Sprintf(`=HYPERLINK("%s","%s")`, pkgLink, pkg.name)
+
+			fmtDocLink := ""
+			if docSign != "" {
+				fmtDocLink = fmt.Sprintf(`=HYPERLINK("%s","%s")`, spaceURL+pkg.doc, docSign)
+			}
+			fmt.Printf("%d\t%d\t%d\t%s\t%s\t%s\n", len(pkg.files), pkg.filesCnt[".java"], pkg.filesCnt[".kt"], pkg.module, fmtPkgLink, fmtDocLink)
 		} else if *mdFlag {
-			fmtPkgLink = fmt.Sprintf("[%s](%s)", pkg.pkgName, pkgLink)
+			fmtPkgLink = fmt.Sprintf("[%s](%s)", pkg.name, pkgLink)
 			fmt.Printf("%-3d | %-3d | %-3d | %-50s | %s\n", len(pkg.files), pkg.filesCnt[".java"], pkg.filesCnt[".kt"], pkg.module, fmtPkgLink)
 		} else {
-			fmt.Printf("%d\t%d\t%d\t%s\n", len(pkg.files), pkg.filesCnt[".java"], pkg.filesCnt[".kt"], fmtPkgLink)
+			fmt.Printf("%d\t%d\t%d\t%s\t%s\n", len(pkg.files), pkg.filesCnt[".java"], pkg.filesCnt[".kt"], fmtPkgLink, docSign+" "+pkg.doc)
 		}
 
 	}
@@ -172,6 +172,35 @@ func main() {
 	// if *csvFlag {
 	// TODO print abs path all the files (to feed into python indexer)
 	// }
+}
+
+func readPkgNameFromFirstLines(path string, n int) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	i := 0
+	pkgName := ""
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() && i < n { // read first 100 lines
+		if strings.HasPrefix(scanner.Text(), "package ") {
+			ss := strings.Fields(scanner.Text())
+			if len(ss) != 2 {
+				fmt.Fprintf(os.Stderr, "fail to get package name for %q\n", path)
+			}
+			pkgName = strings.TrimRight(ss[1], ";")
+			break
+		}
+		i++
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "fail reading file %q :%v\n", path, err)
+		return "", err
+	}
+
+	return pkgName, nil
 }
 
 // readPkgsDirToCollectFiles updates .files & fileCnt for each package by reading pkgDir once.
