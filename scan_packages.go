@@ -40,7 +40,7 @@ var (
 )
 
 // TODO(bzz):
-//  * otion to output a table in .md format
+//  * option to output a table in .md format
 // 		* cloumn: mark packages \w existing JavaDoc (road works emoji)
 //      * column: mark modules (or packages?) \w readme
 //      * column: "doc coverage"? quantify presence of documentation
@@ -124,7 +124,7 @@ func main() {
 	}
 
 	// collect the files
-	readPkgsDirToCollectFiles(pkgs)
+	readPkgDirsToCollectFiles(pkgs)
 
 	// print: header
 	fields := []string{"files", ".java", ".kt", "module", "package", "documentation"}
@@ -203,8 +203,8 @@ func readPkgNameFromFirstLines(path string, n int) (string, error) {
 	return pkgName, nil
 }
 
-// readPkgsDirToCollectFiles updates .files & fileCnt for each package by reading pkgDir once.
-func readPkgsDirToCollectFiles(pkgs map[string]*pkg) {
+// readPkgDirsToCollectFiles updates .files & .fileCnt for each package in a map by reading .pkgDir from FS once.
+func readPkgDirsToCollectFiles(pkgs map[string]*pkg) {
 	for pkgDir, pkg := range pkgs {
 		files, err := os.ReadDir(pkgDir)
 		if err != nil {
