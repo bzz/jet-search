@@ -37,6 +37,7 @@ var (
 	dirFlag = flag.String("d", "", "dir to scan for packages")
 	mdFlag  = flag.Bool("md", false, "format output as Markdown")
 	gsFlag  = flag.Bool("gs", false, "format output as a Spreadsheet")
+	csvFlag = flag.String("csv", "", "save files in a csv format")
 )
 
 // TODO(bzz):
@@ -169,9 +170,24 @@ func main() {
 
 	}
 
-	// if *csvFlag {
-	// TODO print abs path all the files (to feed into python indexer)
-	// }
+	if *csvFlag != "" {
+		// f := csv.NewWriter()
+		f, err := os.Create(*csvFlag)
+		if err != nil {
+			fmt.Printf("error opening a file %q for writing: %v\n", *csvFlag, err)
+			return
+		}
+		defer f.Close()
+
+		//  compare the output to `find .`
+		for _, p := range pkgs {
+			relDir := p.pkgDir[len(*dirFlag)+1:]
+			for _, file := range p.files {
+				fmt.Fprintln(f, filepath.Join(relDir, file))
+				// io.Write (f, filepath.Join(p.pkgDir, file))
+			}
+		}
+	}
 }
 
 func readPkgNameFromFirstLines(path string, n int) (string, error) {
